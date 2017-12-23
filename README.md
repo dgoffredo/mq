@@ -99,6 +99,8 @@ as to send or receive a message from the queue.
                        |  receive-command
                        |  consume-command
                        |  count-command
+                       |  msgsize-command
+                       |  maxmsg-command
                        |  close-command
 
     send-command     ::=  "send" sep priority sep length sep data ws
@@ -117,6 +119,10 @@ as to send or receive a message from the queue.
     consume-command  ::=  "consume" ws
 
     count-command    ::=  "count" ws
+
+    msgsize-command  ::=  "msgsize" ws
+
+    maxmsg-command   ::=  "maxmsg" ws
 
     close-command    ::=  "close" ws
 
@@ -142,12 +148,18 @@ messages and acknowledgements of messages sent.
     response  ::=  msg
                 |  ack
                 |  count
+                |  msgsize
+                |  maxmsg
 
     msg       ::=  priority sep length sep data ws
 
     ack       ::=  "ack" sep priority sep length ws
 
     count     ::=  "count" sep num ws
+
+    msgsize   ::=  "msgsize" sep num
+
+    maxmsg    ::=  "maxmsg" sep num
 
     num       ::=  "0"
                 |  /[1-9][0-9]*/

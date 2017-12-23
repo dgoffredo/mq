@@ -2,6 +2,11 @@
 # build artifacts
 mq
 mq.cpp
+splice-readme
+*.o
 
 # vim stuff
 .*.swp
+.*.swo
+.*.swn
+.*.swm

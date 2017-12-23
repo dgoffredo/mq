@@ -25,58 +25,7 @@
 #include <sstream>
 #include <string>
 
-// -------------
-// miscellaneous
-// -------------
-
-std::string repr(const std::string& input)
-    // Return a representation of the specified 'input' as it might appear in
-    // C++ source code, in double quotes with the appropriate characters
-    // escaped.
-{
-    std::string result;
-    result.push_back('\"');
-    for (std::string::const_iterator it = input.begin();
-         it != input.end();
-         ++it)
-    {
-        const char ch = *it;
-
-        // "Graphical" characters can just pass on through.
-        // Cast to unsigned char to avoid undefined behavior in 'isgraph',
-        // according to <cppreference.com>.
-        if (std::isgraph(static_cast<unsigned char>(ch)))
-        {
-            result.push_back(ch);
-            continue;
-        }
-        
-        switch (ch) {
-          case ' ': result.push_back(ch);   break;
-          case '\"': result.append("\\\""); break;
-          case '\\': result.append("\\\\"); break;
-          case '\a': result.append("\\a");  break;
-          case '\b': result.append("\\b");  break;
-          case '\f': result.append("\\f");  break;
-          case '\n': result.append("\\n");  break;
-          case '\r': result.append("\\r");  break;
-          case '\t': result.append("\\t");  break;
-          case '\v': result.append("\\v");  break;
-          default: {
-              // Anything else is escaped as hexadecimal.
-              result.append("\\x");
-              char buffer[3];  // two hex digits and the null terminator
-              const int rc =
-                  snprintf(buffer, sizeof buffer, "%.2x", (unsigned int)ch);
-              assert(rc == 2);
-              result.append(buffer);
-          }
-        }
-    } 
-
-    result.push_back('\"');
-    return result;
-}
+#include "repr.h"
 
 // --------------------
 // command line parsing
@@ -720,6 +669,40 @@ int countHandler(std::string&, Shared& shared)
     return 0;
 }
 
+int msgsizeHandler(std::string&, Shared& shared)
+{
+    mq_attr attributes;
+    if (const int rc = mq_getattr(shared.queue, &attributes)) {
+        const int error = errno;
+        Lock lock(shared.stderrMutex, shared.consumerThreadExists);
+        std::cerr << "Unable to get queue attributes to report msgsize: "
+                  << strerror(error) << std::endl;
+        return rc;
+    }
+
+    Lock lock(shared.stdoutMutex, shared.consumerThreadExists);
+    std::cout << "msgsize " << attributes.mq_msgsize << std::endl;
+ 
+    return 0;
+}
+
+int maxmsgHandler(std::string&, Shared& shared)
+{
+    mq_attr attributes;
+    if (const int rc = mq_getattr(shared.queue, &attributes)) {
+        const int error = errno;
+        Lock lock(shared.stderrMutex, shared.consumerThreadExists);
+        std::cerr << "Unable to get queue attributes to report maxmsg: "
+                  << strerror(error) << std::endl;
+        return rc;
+    }
+
+    Lock lock(shared.stdoutMutex, shared.consumerThreadExists);
+    std::cout << "maxmsg " << attributes.mq_maxmsg << std::endl;
+ 
+    return 0;
+}
+
 int closeHandler(std::string&, Shared& shared)
 {
     Lock stoppedLock(shared.stoppedMutex, shared.consumerThreadExists);
@@ -835,6 +818,8 @@ int serve(const mqd_t& mq, const Options& options)
         else HANDLE_COMMAND(receive)
         else HANDLE_COMMAND(consume)
         else HANDLE_COMMAND(count)
+        else HANDLE_COMMAND(msgsize)
+        else HANDLE_COMMAND(maxmsg)
         else if (chunk == "close") {
             break;  // "close" is handled at the end.
         }
