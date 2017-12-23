@@ -4,3 +4,7 @@ mq: mq.cpp
 
 mq.cpp: mq_template.cpp README.md
 	python splice-readme.py mq_template.cpp README.md > mq.cpp
+
+.PHONY: clean
+clean:
+	rm -f mq mq.cpp
