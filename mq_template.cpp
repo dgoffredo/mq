@@ -2,7 +2,6 @@
 // POSIX
 #include <errno.h>     // error codes
 #include <fcntl.h>     // file open constants
-#include <limits.h>    // _POSIX_*_MAX
 #include <mqueue.h>    // mq_*
 #include <pthread.h>   // pthread_*
 #include <signal.h>    // SIGUSR1
@@ -434,36 +433,46 @@ int sendHandler(std::string& chunk, Shared& shared)
                   << std::endl;
         return 2;
     }
-    if (size <= 0) {
+    if (size < 0) {
         Lock lock(shared.stderrMutex, shared.consumerThreadExists);
-        std::cerr << "Messages must have a positive size. Size " << size
+        std::cerr << "Messages must have a non-negative size. Size " << size
                   << " is not permitted." << std::endl;
         return 4;
     } 
 
     std::cin.ignore();  // Discard space character between size and payload.
 
-    chunk.resize(size);
-    std::cin.read(&chunk[0], size);
-    if (!std::cin || std::cin.gcount() != size) {
-        Lock lock(shared.stderrMutex, shared.consumerThreadExists);
-        std::cerr << "Unable to read from input all of the supposed "
-                  << size << " byte message. " << std::cin.gcount()
-                  << " were read instead." << std::endl;
-        return 5;
+    if (size) {
+        chunk.resize(size);
+        std::cin.read(&chunk[0], size);
+        if (!std::cin || std::cin.gcount() != size) {
+            Lock lock(shared.stderrMutex, shared.consumerThreadExists);
+            std::cerr << "Unable to read from input all of the supposed "
+                      << size << " byte message. " << std::cin.gcount()
+                      << " were read instead." << std::endl;
+            return 5;
+        }
     }
 
-    const ssize_t rc = mq_send(shared.queue, 
-                               chunk.data(), 
-                               size, 
-                               priority);
-    if (rc == -1) {
-        const int error = errno;
-        if (error != EINTR) {
-            Lock lock(shared.stderrMutex, shared.consumerThreadExists);
-            std::cerr << "Unable to send message size for \"send\" command: "
-                      << strerror(error) << std::endl;
-            return 3;
+    // looping for retry on signal interruption
+    for (;;) {
+        const ssize_t rc = mq_send(shared.queue, 
+                                   chunk.data(), 
+                                   size, 
+                                   priority);
+        if (rc == -1) {
+            // failed to send
+            const int error = errno;
+            if (error != EINTR) {
+                Lock lock(shared.stderrMutex, shared.consumerThreadExists);
+                std::cerr << "Unable to send message for \"send\" command: "
+                          << strerror(error) << std::endl;
+                return 3;
+            }
+        }
+        else {
+            // send succeeded
+            break;
         }
     }
 
@@ -483,6 +492,12 @@ int doReceive(std::string& buffer, Shared& shared)
     // standard output, prefixed by its priority and length.  'doReceive' is
     // used by both 'receiveHandler' and 'consume'.
 {
+    // Note on the implementation: This code goes out of its way to arrange the
+    // output contiguously in memory before calling 'write'.  In part this
+    // makes the 'write' call simpler, but also it's a (perhaps unnecessary)
+    // optimization that minimizes the number of syscalls ('write' is called
+    // only once per message in the common case).
+    //
     // The message, once received, will be printed to stdout prefixed with its
     // priority and size, e.g. a priority-2 message containing "hello" would
     // be written to stdout as "2 5 hello\n" (without the null terminator).
@@ -641,8 +656,8 @@ int receiveHandler(std::string& buffer, Shared& shared)
 {
     // Assume that if receive fails, it won't be due to the queue having been
     // closed, because only a 'close' handler would close the queue.
-    // That means that if we get FAIL_INTERRUPTED_OR_CLOSED, then it was due to
-    // a signal interruption, and so we should retry.
+    // That means that if we get 'FAIL_INTERRUPTED_OR_CLOSED', then it was due
+    // to a signal interruption, and so we should retry.
     for (;;) {
         const int rc = doReceive(buffer, shared);
 
@@ -653,6 +668,8 @@ int receiveHandler(std::string& buffer, Shared& shared)
 
 // Signal handler for 'SIGUSR1', installed in 'consumeHandler'.
 extern "C" void noOpSignalHandler(int) {
+    // TODO: Would it be sufficient to set the 'sigaction' to ignore rather
+    //       than call this no-op function?
 }
 
 extern "C" void *consume(void *data);  // defined further below
@@ -664,7 +681,7 @@ int consumeHandler(std::string&, Shared& shared)
     // thread) from 'mq_receive', on systems where closing the queue is not
     // sufficient.  We can't ignore the signal (since we want it to interrupt
     // 'mq_receive'), but we also don't want it to do anything.  So, let the
-    // handler be a no-op function ('noOpSignalHandler').
+    // handler be a no-op function ('noOpSignalHandler'). TODO: is that true?
     struct sigaction doNothing = {};
     doNothing.sa_handler = &noOpSignalHandler;
     sigaction(SIGUSR1,     // signal
