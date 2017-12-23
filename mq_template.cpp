@@ -196,7 +196,8 @@ int checkArgs(int argc, const char *const argv[])
     // Make sure there aren't any unsupported flags specified, like
     // --chicken-dinner
     const char *const flags[] = { 
-        "read", "write", "open", "create", "msgsize", "maxmsg", "readme"
+        "read", "write", "open", "create", "msgsize", "maxmsg", "readme",
+        "debug"
     };
     const char *const *const endFlags =
         flags + sizeof(flags) / sizeof(flags[0]);
