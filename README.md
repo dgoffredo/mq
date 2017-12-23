@@ -12,7 +12,7 @@ pipes.
 What
 ----
 `mq` is a C++ program that opens or creates a POSIX message queue based on its
-command line arguments, and then provides send and/or recv access to the
+command line arguments, and then provides send and/or receive access to the
 message queue via a protocol read from stdin and written to stdout.  Errors go
 to stderr.
 
@@ -24,46 +24,49 @@ readability, though there would be no prompt in reality.
 The example opens (or first creates with Unix permissions `600`) the message
 queue named `/my-queue` (on many systems, queue names must be prefixed with a
 `/`) for both reading and writing, and then sends and receives various messages
-before closeping the queue:
+before closing the queue:
 
     $ mq --open --create --read --write --permissions 600 /my-queue
-    > send 47 hello, here is my message of length forty-seven
-    ack 47
-    > send 32 here is one of length thirty-two
-    ack 32
-    > recv
-    47 hello, here is my message of length forty-seven
-    > recv
-    32 here is one of length thirty-two
-    > send 3 one
-    > send 3 two
-    > send 8 goodbye!
+    > send 0 47 hello, here is my message of length forty-seven
+    ack 0 47
+    > send 0 32 here is one of length thirty-two
+    ack 0 32
+    > receive
+    0 47 hello, here is my message of length forty-seven
+    > receive
+    0 32 here is one of length thirty-two
+    > send 1 3 one
+    > send 2 3 two
+    > send 3 8 goodbye!
     > consume
-    3 one
-    3 two
-    8 goodbye!
+    1 3 one
+    2 3 two
+    3 8 goodbye!
     > close
     $
+
+The integer before the message length is the message priority, which must be
+non-negative.
 
 Here's an example that demonstrates the persistence of the queue.  It is
 destroyed when the system goes down, or when it is `unlink`ed and no open file
 descriptors remain for it:
 
     $ mq --open --create --read --write --permissions 600 /todo
-    > send 19 send a few messages
-    ack 19
-    > send 10 like these
-    ack 10
-    > send 54 and read from another process after this one goes away
-    ack 54
+    > send 0 19 send a few messages
+    ack 0 19
+    > send 0 10 like these
+    ack 0 10
+    > send 0 54 and read from another process after this one goes away
+    ack 0 54
     > close
     $ echo Notice how now we can omit the "create" and "permissions" options.
     Notice how now we can omit the "create" and "permissions" options.
     $ mq --open --read /todo
     > consume
-    19 send a few messages
-    10 like these
-    54 and read from another process after this one goes away
+    0 19 send a few messages
+    0 10 like these
+    0 54 and read from another process after this one goes away
     > close
     $
 
@@ -86,27 +89,36 @@ as to send or receive a message from the queue.
 
 ##### Grammar
 
-    stdin            ::=  (command (ws command)* ws?)?
+    stdin            ::=  (ws? command command* ws?)?
+
+    sep              ::=  /[ ]/
 
     ws               ::=  /[\t\r\n ]+/
 
     command          ::=  send-command
-                       |  recv-command
+                       |  receive-command
                        |  consume-command
+                       |  count-command
                        |  close-command
 
-    send-command     ::=  "send" ws length ws data
+    send-command     ::=  "send" sep priority sep length sep data ws
 
-    length           ::=  "0"
+    num              ::=  "0"
                        |  /[1-9][0-9]*/
+
+    priority         ::=  num
+     
+    length           ::=  num
 
     data             ::=  /.*/
 
-    recv-command     ::=  "recv"
+    receive-command  ::=  "receive" ws
 
-    consume-command  ::=  "consume"
+    consume-command  ::=  "consume" ws
 
-    close-command    ::=  "close"
+    count-command    ::=  "count" ws
+
+    close-command    ::=  "close" ws
 
 ##### Semantics
 Any `data` prefixed by a `length` must have that length.  The `close` command
@@ -121,19 +133,28 @@ messages and acknowledgements of messages sent.
 
 ##### Grammar
 
-    stdout    ::=  (response (ws response)* ws?)?
+    stdout    ::=  (ws? response response* ws?)?
+
+    sep       ::=  /[ ]/
 
     ws        ::=  /[\t\r\n ]+/
     
     response  ::=  msg
                 |  ack
+                |  count
 
-    msg       ::=  length ws data
+    msg       ::=  priority sep length sep data ws
 
-    ack       ::=  "ack" length
+    ack       ::=  "ack" sep priority sep length ws
 
-    length    ::=  "0"
+    count     ::=  "count" sep num ws
+
+    num       ::=  "0"
                 |  /[1-9][0-9]*/
+
+    priority  ::=  num
+
+    length    ::=  num
 
     data      ::=  /.*/
 
@@ -150,7 +171,7 @@ acknowledged.  Lengths are base ten non-negative integers in text.
 
     newline     ::=  /[\n]/
 
-    diagnostic  ::=  /[^\n]*/
+    diagnostic  ::=  /[^\n\r]*/
 
 ##### Semantics
 Each `diagnostic` is a human-readable English language description of the error
@@ -160,7 +181,9 @@ that occurred.  The text encoding is UTF-8 (but without the newline character).
 Any error reported to the user through `mq`'s standard error pipe is grounds
 for terminating the `mq` process.  It will not terminate itself on purpose,
 and many errors are recoverable, but for simplicity's sake it's best to start
-again when an error occurs.
+again when an error occurs.  Note that if the `--debug` option is specified on
+the command line, debugging information will be printed to stderr in addition
+to reported errors.
 
 ### Build
 The `mq` binary is built in place using the `Makefile`:

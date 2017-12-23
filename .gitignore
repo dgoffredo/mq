@@ -1,0 +1,7 @@
+
+# build artifacts
+mq
+mq.cpp
+
+# vim stuff
+.*.swp
