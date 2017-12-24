@@ -89,7 +89,7 @@ as to send or receive a message from the queue.
 
 ##### Grammar
 
-    stdin            ::=  (ws? command command* ws?)?
+    stdin            ::=  (ws? command+ ws?)?
 
     sep              ::=  /[ ]/
 
@@ -139,7 +139,7 @@ messages and acknowledgements of messages sent.
 
 ##### Grammar
 
-    stdout    ::=  (ws? response response* ws?)?
+    stdout    ::=  (ws? response+ ws?)?
 
     sep       ::=  /[ ]/
 
