@@ -19,10 +19,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>     // std::exit
+#include <ios>         // std::dec, std::oct
 #include <iostream>
 #include <limits>
 #include <ostream>
 #include <sstream>
+#include <stdexcept>   // std::runtime_error, std::exception
 #include <string>
 
 #include "repr.h"
@@ -81,6 +83,7 @@ void readme() {
 struct FindArgs {
     const char *const *const begin;
     const char *const *const end;
+
     FindArgs(const char *const *begin, const char *const *end)
     : begin(begin)
     , end(end)
@@ -145,7 +148,7 @@ int checkArgs(int argc, const char *const argv[])
     // --chicken-dinner
     const char *const flags[] = { 
         "read", "write", "open", "create", "msgsize", "maxmsg", "readme",
-        "debug"
+        "debug", "permissions"
     };
     const char *const *const endFlags =
         flags + sizeof(flags) / sizeof(flags[0]);
@@ -190,6 +193,23 @@ struct Options {
     {}
 };
 
+template <typename OUTPUT>
+int parse(OUTPUT&          output,
+          const char      *input, 
+          std::ios_base& (*base)(std::ios_base&) = &std::dec)
+    // Read one object of type 'OBJECT' into the specified 'object' from the
+    // specified 'input' using the optionally specified 'base' manipulator.
+    // Return zero on success or a nonzero value otherwise.  The behavior is
+    // undefined if 'input' is null.  Note that 'input' need not be completely
+    // consumed by this function.
+{
+    std::stringstream ss(input);
+    assert(ss);
+
+    ss >> output;
+    return !ss;
+}
+
 Options parseOptions(int argc, const char *const argv[])
 {
     const FindArgs find(argv + 1, argv + argc);
@@ -217,24 +237,30 @@ Options parseOptions(int argc, const char *const argv[])
                                   : open ? Options::OPEN_ONLY
                                          : Options::CREATE_ONLY;
 
-    struct ToSsize {
-        ssize_t operator()(const char *string) const {
-            std::stringstream ss;
-            ss << string;
-            ssize_t result;
-            ss >> result;
-            return result;
+    const char *const *const permissionsOption = find("--permissions");
+    if (permissionsOption) {
+        const char *const permissionsString = *(permissionsOption + 1);
+        if (parse(options.filePermissions, permissionsString, &std::oct)) {
+            throw std::runtime_error("Invalid (octal) file permissions: " +
+                                     repr(permissionsString));
         }
-    } const toSsize;
+    }
 
     const char *const *const maxmsgOption = find("--maxmsg");
     if (maxmsgOption) {
-        options.maxmsg = toSsize(*(maxmsgOption + 1));
+        const char *const maxmsgString = *(maxmsgOption + 1);
+        if (parse(options.maxmsg, maxmsgString)) {
+            throw std::runtime_error("Invalid maxmsg: " + repr(maxmsgString));
+        }
     }
 
     const char *const *const msgsizeOption = find("--msgsize");
     if (msgsizeOption) {
-        options.msgsize = toSsize(*(msgsizeOption + 1));
+        const char *const msgsizeString = *(maxmsgOption + 1);
+        if (parse(options.msgsize, msgsizeString)) {
+            throw std::runtime_error("Invalid msgsize: " +
+                                     repr(msgsizeString));
+        }
     }
 
     options.maxesSpecified = maxmsgOption || msgsizeOption;
@@ -841,8 +867,7 @@ int serve(const mqd_t& mq, const Options& options)
 // main
 // ----
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) try {
     if (const int rc = checkArgs(argc, argv))
         return rc;
 
@@ -865,4 +890,8 @@ int main(int argc, char *argv[])
     }
 
     return serve(mq, options);
+}
+catch (const std::exception& error) {
+    std::cerr << error.what() << std::endl;
+    return 1;
 }
