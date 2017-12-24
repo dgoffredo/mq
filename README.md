@@ -204,3 +204,9 @@ The `mq` binary is built in place using the `Makefile`:
 
     $ make
     $ ls mq
+
+### Credits
+The mascot image for this project is a combination of two illustrations:
+
+- queue by Kirby Wu from the Noun Project
+- Command Line by Focus from the Noun Project
